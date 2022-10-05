@@ -51,12 +51,17 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Purchase
-        fields = ["product", "store", "customer", "total_price", "quantity"]
+        fields = ["product", "store", "customer", "total_price"]
 
 
-    def stock_quantity_positive(self, stock_quantity, quantity):
-        if quantity > stock_quantity:
-            raise serializers.ValidationError(f"Insufficient stock! Current stock is {stock_quantity}.")
+    def stock_quantity_positive(self, lista_de_produtos):
+        """
+        lista_de_produtos =[{'product': <Product: Product object (d073a038-0b5e-4577-b460-22f99149a410)>, 'quantity': 2}, 
+        {'product': <Product: Product object (10ec271d-c661-4f3d-b790-2cad2233a286)>, 'quantity': 3}]
+        """
+        for product in lista_de_produtos:
+            if  product["quantity"] >= product["product"].stock_quantity:
+                raise serializers.ValidationError(f"Insufficient stock! Current stock for product {product['product'].description} is {product['product'].stock_quantity}.")
 
 
     def customer_money_positive(self, customer, total_price):
@@ -70,31 +75,33 @@ class PurchaseSerializer(serializers.ModelSerializer):
         customer.save()
         store.save()
 
-    def stock_control(self, product, quantity):
-        product.stock_quantity -= quantity
-        product.save()
-
-    def validate(self, data):
-        stock_quantity = data["product"].stock_quantity
-        quantity = data["quantity"]
-        price = data["product"].price
-        total_price = price * quantity
-        customer = data["customer"]
-        self.stock_quantity_positive(stock_quantity, quantity)
-        self.customer_money_positive(customer, total_price)
-        return data
-
+    def _get_products(self, products):
+        product_list= []
+        for product in products:
+            purchase_product = Product.objects.get(id=product["id"])
+            new_product = {"product": purchase_product, "quantity": product["quantity"]}
+            product_list.append(new_product)
+        return product_list
+    
+    def _stock_control(self, lista_de_produtos):
+        for product in lista_de_produtos:
+            product["product"].stock_quantity -= product["quantity"]
+            product["product"].save()
+    def _get_total_price(self, lista_de_produtos):
+        valor = []
+        for product in lista_de_produtos:
+            valor_total_produtos = product["product"].price * product["quantity"]
+            valor.append(valor_total_produtos)
+        return sum(valor)
+        
     def create(self, validated_data):
-        product = validated_data["product"]
-        store = validated_data["store"]
-        customer = validated_data["customer"]
-        quantity = validated_data["quantity"]
-        price = validated_data["product"].price
-        total_price = price * quantity
-        purchase = Purchase.objects.create(product=product, store=store, customer=customer, quantity=quantity,
-                                           total_price=total_price)
-        self.stock_control(product, quantity)
-        self.money_transaction(total_price, customer, store)
+        products = self._get_products(products=validated_data["product"])
+        self.stock_quantity_positive(lista_de_produtos=products)
+        total_price = self._get_total_price(lista_de_produtos=products)
+        self._stock_control(lista_de_produtos=products)
+        self.customer_money_positive(customer=validated_data["customer"], total_price=total_price)
+        self.money_transaction(total_price=total_price,customer=validated_data["customer"] , store=validated_data["store"])
+        purchase = Purchase.objects.create(product=validated_data["product"], store=validated_data["store"], customer=validated_data["customer"], total_price=total_price)
         return purchase
 
     def get_total_price(self, instance):

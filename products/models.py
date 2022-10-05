@@ -1,5 +1,6 @@
 from django.db import models
 from uuid import uuid4
+from django.core.serializers.json import DjangoJSONEncoder
 
 
 class BaseModel(models.Model):
@@ -41,10 +42,9 @@ class Store(BaseModel):
 
 class Purchase(BaseModel):
     store = models.ForeignKey(Store, on_delete=models.CASCADE, default=None)
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, default=None)
+    product = models.JSONField(encoder=DjangoJSONEncoder)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, default=None)
     total_price = models.DecimalField(decimal_places=2, max_digits=9, default=None)
-    quantity = models.PositiveIntegerField(default=None)
 
     class Meta:
         verbose_name = "Purchase"
